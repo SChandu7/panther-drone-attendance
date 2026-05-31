@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Attendance Register</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #34495e;
+            --accent-color: #3498db;
+            --present-color: #27ae60;
+            --absent-color: #c0392b;
+            --warning-color: #f39c12;
+            --bg-color: #f8f9fa;
+            --border-color: #dee2e6;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        h1 {
+            margin: 0;
+            color: var(--primary-color);
+            font-size: 24px;
+        }
+
+        .control-panel {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+            background: #fdfdfd;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: flex-end;
+        }
+
+        .input-box {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 150px;
+        }
+
+        label {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: var(--secondary-color);
+        }
+
+        input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            border-color: var(--accent-color);
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: white;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-main { background-color: var(--accent-color); height: 40px; }
+        .btn-cancel { background-color: #95a5a6; height: 40px; display: none; }
+        .btn-export { background-color: #27ae60; }
+        .btn-date { background-color: var(--primary-color); }
+
+        .actions-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .date-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            white-space: nowrap;
+        }
+
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+        }
+
+        th {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 500;
+        }
+
+        td:last-child, th:last-child {
+            border-right: none;
+        }
+
+        tbody tr:hover {
+            background-color: #f1f3f5;
+        }
+
+        .att-btn {
+            width: 35px;
+            height: 35px;
+            border-radius: 4px;
+            border: none;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            margin: 0 auto;
+            color: white;
+        }
+
+        .att-none { background-color: #e9ecef; color: #495057; border: 1px solid #ced4da; }
+        .att-p { background-color: var(--present-color); }
+        .att-a { background-color: var(--absent-color); }
+
+        .date-header {
+            text-align: center;
+            min-width: 80px;
+        }
+        
+        .row-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .edit-btn { background-color: var(--warning-color); padding: 6px 12px; font-size: 12px; }
+        .delete-btn { background-color: var(--absent-color); padding: 6px 12px; font-size: 12px; }
+        
+        /* Highlight row being edited */
+        .editing-row {
+            background-color: #fff3e0 !important;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Digital Attendance Register</h1>
+    </div>
+
+    <div class="control-panel">
+        <form class="form-group" id="addPersonForm">
+            <div class="input-box">
+                <label>S.No</label>
+                <input type="text" id="sno" required>
+            </div>
+            <div class="input-box">
+                <label>Army No</label>
+                <input type="text" id="armyNo" required>
+            </div>
+            <div class="input-box">
+                <label>Rank</label>
+                <input type="text" id="rank" required>
+            </div>
+            <div class="input-box">
+                <label>Name</label>
+                <input type="text" id="name" required>
+            </div>
+            <div class="input-box">
+                <label>Unit</label>
+                <input type="text" id="unit" required>
+            </div>
+            <div class="input-box">
+                <label>Mobile No</label>
+                <input type="text" id="mobile">
+            </div>
+            <div class="form-actions">
+                <button type="submit" id="submitBtn" class="btn-main">+ Add Record</button>
+                <button type="button" id="cancelBtn" class="btn-cancel" onclick="cancelEdit()">Cancel</button>
+            </div>
+        </form>
+
+        <div class="actions-row">
+            <div class="date-controls">
+                <input type="date" id="newDateInput" value="">
+                <button class="btn-date" onclick="addColumnDate()">Add Attendance Date</button>
+            </div>
+            <button class="btn-export" onclick="exportToExcel()">⭳ Export to Excel (.xlsx)</button>
+        </div>
+    </div>
+
+    <div class="table-wrapper">
+        <table id="registerTable">
+            <thead>
+                <tr id="tableHeaders">
+                    <th>S.No</th>
+                    <th>Army No</th>
+                    <th>Rank</th>
+                    <th>Name</th>
+                    <th>Unit</th>
+                    <th>Mobile No</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // --- State Management ---
+    let personnelData = JSON.parse(localStorage.getItem('attendanceData')) || [];
+    let dateColumns = JSON.parse(localStorage.getItem('attendanceDates')) || [];
+    let editingId = null; // Tracks if we are currently editing a row
+
+    // Initialize with some dummy data if completely empty
+    if (personnelData.length === 0) {
+        let today = new Date().toISOString().split('T')[0];
+        dateColumns = [today];
+        personnelData = [
+            { id: 1, sno: '1', armyNo: '123456A', rank: 'RFN', name: 'Avinay', unit: 'Alpha Coy', mobile: '9876543210', attendance: { [today]: 'P' } },
+            { id: 2, sno: '2', armyNo: '123457B', rank: 'RFM', name: 'S Chandra Sekhar', unit: 'Bravo Coy', mobile: '9876543211', attendance: { [today]: 'A' } },
+            { id: 3, sno: '3', armyNo: '123458C', rank: 'RFO', name: 'Suraj', unit: 'Alpha Coy', mobile: '9876543212', attendance: { [today]: '' } }
+        ];
+        saveData();
+    }
+
+    // Set today's date in the date picker by default
+    document.getElementById('newDateInput').value = new Date().toISOString().split('T')[0];
+
+    // --- Core Functions ---
+    function saveData() {
+        localStorage.setItem('attendanceData', JSON.stringify(personnelData));
+        localStorage.setItem('attendanceDates', JSON.stringify(dateColumns));
+    }
+
+    function renderTable() {
+        const headerRow = document.getElementById('tableHeaders');
+        const body = document.getElementById('tableBody');
+
+        // Reset Headers
+        headerRow.innerHTML = `
+            <th>S.No</th>
+            <th>Army No</th>
+            <th>Rank</th>
+            <th>Name</th>
+            <th>Unit</th>
+            <th>Mobile No</th>
+        `;
+
+        // Add Date Headers
+        dateColumns.forEach(date => {
+            const d = new Date(date);
+            const displayDate = `${d.getDate()}-${d.toLocaleString('default', { month: 'short' })}`;
+            headerRow.innerHTML += `<th class="date-header">${displayDate}<br><small style="font-size:10px; font-weight:normal;">${date}</small></th>`;
+        });
+        headerRow.innerHTML += `<th>Actions</th>`;
+
+        // Render Body
+        body.innerHTML = '';
+        personnelData.forEach((person) => {
+            let tr = document.createElement('tr');
+            
+            // Highlight row if it is currently being edited
+            if(editingId === person.id) {
+                tr.classList.add('editing-row');
+            }
+            
+            // Static Data Cells
+            tr.innerHTML = `
+                <td>${person.sno}</td>
+                <td>${person.armyNo}</td>
+                <td>${person.rank}</td>
+                <td style="font-weight: 600;">${person.name}</td>
+                <td>${person.unit}</td>
+                <td>${person.mobile}</td>
+            `;
+
+            // Dynamic Attendance Cells
+            dateColumns.forEach(date => {
+                let td = document.createElement('td');
+                let status = person.attendance[date] || '';
+                let btnClass = status === 'P' ? 'att-p' : status === 'A' ? 'att-a' : 'att-none';
+                let btnText = status === '' ? '-' : status;
+
+                td.innerHTML = `<button class="att-btn ${btnClass}" onclick="toggleAttendance(${person.id}, '${date}')">${btnText}</button>`;
+                tr.appendChild(td);
+            });
+
+            // Action Cell (Edit & Delete)
+            tr.innerHTML += `
+                <td>
+                    <div class="row-actions">
+                        <button class="edit-btn" onclick="editPerson(${person.id})">Edit</button>
+                        <button class="delete-btn" onclick="deletePerson(${person.id})">Del</button>
+                    </div>
+                </td>
+            `;
+            body.appendChild(tr);
+        });
+    }
+
+    // --- Form Submission (Add or Update) ---
+    document.getElementById('addPersonForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = {
+            sno: document.getElementById('sno').value,
+            armyNo: document.getElementById('armyNo').value,
+            rank: document.getElementById('rank').value,
+            name: document.getElementById('name').value,
+            unit: document.getElementById('unit').value,
+            mobile: document.getElementById('mobile').value,
+        };
+
+        if (editingId) {
+            // --- UPDATE EXISTING RECORD ---
+            const index = personnelData.findIndex(p => p.id === editingId);
+            if (index !== -1) {
+                // Keep the original ID and preserve the existing attendance data
+                formData.id = editingId;
+                formData.attendance = personnelData[index].attendance;
+                personnelData[index] = formData;
+            }
+            resetForm(); // Clear editing state
+        } else {
+            // --- ADD NEW RECORD ---
+            formData.id = Date.now();
+            formData.attendance = {};
+            personnelData.push(formData);
+            
+            // Auto-increment S.No for the next person
+            let currentSno = parseInt(formData.sno);
+            if(!isNaN(currentSno)) {
+                document.getElementById('sno').value = currentSno + 1;
+            }
+            // Clear other fields but keep the auto-incremented S.No
+            ['armyNo', 'rank', 'name', 'mobile'].forEach(id => document.getElementById(id).value = '');
+        }
+
+        saveData();
+        renderTable();
+    });
+
+    // --- Edit Functions ---
+    function editPerson(personId) {
+        const person = personnelData.find(p => p.id === personId);
+        if (!person) return;
+
+        editingId = person.id;
+
+        // Populate form with user data
+        document.getElementById('sno').value = person.sno;
+        document.getElementById('armyNo').value = person.armyNo;
+        document.getElementById('rank').value = person.rank;
+        document.getElementById('name').value = person.name;
+        document.getElementById('unit').value = person.unit;
+        document.getElementById('mobile').value = person.mobile || '';
+
+        // Update UI to show editing state
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.innerHTML = '✓ Update Record';
+        submitBtn.style.backgroundColor = 'var(--warning-color)';
+        
+        document.getElementById('cancelBtn').style.display = 'inline-block';
+        
+        renderTable(); // Re-render to highlight the row being edited
+        window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to top form
+    }
+
+    function cancelEdit() {
+        resetForm();
+        renderTable();
+    }
+
+    function resetForm() {
+        editingId = null;
+        document.getElementById('addPersonForm').reset();
+        
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.innerHTML = '+ Add Record';
+        submitBtn.style.backgroundColor = 'var(--accent-color)';
+        
+        document.getElementById('cancelBtn').style.display = 'none';
+    }
+
+    // --- Grid / Column Actions ---
+    function addColumnDate() {
+        const dateInput = document.getElementById('newDateInput').value;
+        if (!dateInput) return alert("Please select a date first.");
+        
+        if (!dateColumns.includes(dateInput)) {
+            dateColumns.push(dateInput);
+            dateColumns.sort((a, b) => new Date(a) - new Date(b)); // Sort chronological
+            saveData();
+            renderTable();
+        } else {
+            alert("This date is already added to the register.");
+        }
+    }
+
+    function toggleAttendance(personId, date) {
+        const person = personnelData.find(p => p.id === personId);
+        if (person) {
+            const currentStatus = person.attendance[date];
+            if (!currentStatus) person.attendance[date] = 'P';
+            else if (currentStatus === 'P') person.attendance[date] = 'A';
+            else person.attendance[date] = '';
+            
+            saveData();
+            renderTable();
+        }
+    }
+
+    function deletePerson(personId) {
+        if (confirm("Are you sure you want to completely remove this record?")) {
+            personnelData = personnelData.filter(p => p.id !== personId);
+            if(editingId === personId) cancelEdit(); // Reset form if deleting the person currently being edited
+            saveData();
+            renderTable();
+        }
+    }
+
+    // --- Export to Real Excel (.xlsx) using SheetJS ---
+    function exportToExcel() {
+        if (personnelData.length === 0) return alert("No data to export.");
+
+        let exportData = [];
+
+        // Build the Header Row
+        let headers = ["S.No", "Army No", "Rank", "Name", "Unit", "Mobile No"];
+        dateColumns.forEach(date => headers.push(date));
+        exportData.push(headers);
+
+        // Build Data Rows
+        personnelData.forEach(person => {
+            let row = [
+                person.sno,
+                person.armyNo,
+                person.rank,
+                person.name,
+                person.unit,
+                person.mobile
+            ];
+
+            dateColumns.forEach(date => {
+                let status = person.attendance[date] || '-';
+                row.push(status);
+            });
+
+            exportData.push(row);
+        });
+
+        // Generate Excel File
+        const worksheet = XLSX.utils.aoa_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance Register");
+
+        const dateStr = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(workbook, `Attendance_Register_${dateStr}.xlsx`);
+    }
+
+    // Initial Render
+    renderTable();
+
+</script>
+</body>
+</html>
