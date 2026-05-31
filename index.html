@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panther Drone Warfare Node Attendance</title>
+    <title>Digital Attendance Register (Database Version)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -48,6 +48,18 @@
             color: var(--primary-color);
             font-size: 24px;
         }
+
+        .status-indicator {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            background-color: #e67e22;
+            color: white;
+        }
+
+        .status-connected { background-color: var(--present-color); }
+        .status-error { background-color: var(--absent-color); }
 
         .control-panel {
             display: grid;
@@ -104,15 +116,10 @@
             color: white;
         }
 
-        button:hover {
-            opacity: 0.9;
-        }
+        button:hover { opacity: 0.9; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .form-actions {
-            display: flex;
-            gap: 10px;
-        }
-
+        .form-actions { display: flex; gap: 10px; }
         .btn-main { background-color: var(--accent-color); height: 40px; }
         .btn-cancel { background-color: #95a5a6; height: 40px; display: none; }
         .btn-export { background-color: #27ae60; }
@@ -150,19 +157,9 @@
             border-right: 1px solid var(--border-color);
         }
 
-        th {
-            background-color: var(--primary-color);
-            color: white;
-            font-weight: 500;
-        }
-
-        td:last-child, th:last-child {
-            border-right: none;
-        }
-
-        tbody tr:hover {
-            background-color: #f1f3f5;
-        }
+        th { background-color: var(--primary-color); color: white; font-weight: 500; }
+        td:last-child, th:last-child { border-right: none; }
+        tbody tr:hover { background-color: #f1f3f5; }
 
         .att-btn {
             width: 35px;
@@ -184,30 +181,21 @@
         .att-p { background-color: var(--present-color); }
         .att-a { background-color: var(--absent-color); }
 
-        .date-header {
-            text-align: center;
-            min-width: 80px;
-        }
+        .date-header { text-align: center; min-width: 80px; }
         
-        .row-actions {
-            display: flex;
-            gap: 5px;
-        }
-
+        .row-actions { display: flex; gap: 5px; }
         .edit-btn { background-color: var(--warning-color); padding: 6px 12px; font-size: 12px; }
         .delete-btn { background-color: var(--absent-color); padding: 6px 12px; font-size: 12px; }
         
-        /* Highlight row being edited */
-        .editing-row {
-            background-color: #fff3e0 !important;
-        }
+        .editing-row { background-color: #fff3e0 !important; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <div class="header">
-        <h1>Panther Drone Warfare Node Attendance</h1>
+        <h1>Digital Attendance Register</h1>
+        <div id="connectionStatus" class="status-indicator">Connecting to Database...</div>
     </div>
 
     <div class="control-panel">
@@ -255,14 +243,7 @@
         <table id="registerTable">
             <thead>
                 <tr id="tableHeaders">
-                    <th>S.No</th>
-                    <th>Army No</th>
-                    <th>Rank</th>
-                    <th>Name</th>
-                    <th>Unit</th>
-                    <th>Mobile No</th>
-                    <th>Action</th>
-                </tr>
+                    </tr>
             </thead>
             <tbody id="tableBody">
                 </tbody>
@@ -271,37 +252,57 @@
 </div>
 
 <script>
-    // --- State Management ---
-    let personnelData = JSON.parse(localStorage.getItem('attendanceData')) || [];
-    let dateColumns = JSON.parse(localStorage.getItem('attendanceDates')) || [];
-    let editingId = null; // Tracks if we are currently editing a row
+    // --- Global State & Configuration ---
+    // Make sure this matches your Django development server URL
+    const API_BASE = 'http://127.0.0.1:8000/api'; 
+    
+    let personnelData = [];
+    let dateColumns = [];
+    let editingId = null;
 
-    // Initialize with some dummy data if completely empty
-    if (personnelData.length === 0) {
-        let today = new Date().toISOString().split('T')[0];
-        dateColumns = [today];
-        personnelData = [
-            { id: 1, sno: '1', armyNo: '123456A', rank: 'RFN', name: 'Avinay', unit: 'Alpha Coy', mobile: '9876543210', attendance: { [today]: 'P' } },
-            { id: 2, sno: '2', armyNo: '123457B', rank: 'RFM', name: 'S Chandra Sekhar', unit: 'Bravo Coy', mobile: '9876543211', attendance: { [today]: 'A' } },
-            { id: 3, sno: '3', armyNo: '123458C', rank: 'RFO', name: 'Suraj', unit: 'Alpha Coy', mobile: '9876543212', attendance: { [today]: '' } }
-        ];
-        saveData();
+    // --- Initialization ---
+    async function initApp() {
+        document.getElementById('newDateInput').value = new Date().toISOString().split('T')[0];
+        await fetchRegisterData();
     }
 
-    // Set today's date in the date picker by default
-    document.getElementById('newDateInput').value = new Date().toISOString().split('T')[0];
+    // --- Database Fetching ---
+    async function fetchRegisterData() {
+        const statusEl = document.getElementById('connectionStatus');
+        try {
+            const response = await fetch(`${API_BASE}/register-data/`);
+            if (!response.ok) throw new Error('Network response was not ok');
+            
+            const data = await response.json();
+            personnelData = data.personnelData;
+            
+            // If the database has no attendance dates yet, start with today
+            if (data.dateColumns.length === 0) {
+                dateColumns = [new Date().toISOString().split('T')[0]];
+            } else {
+                // Ensure existing local dates aren't lost if they haven't been saved to DB yet
+                const combinedDates = new Set([...dateColumns, ...data.dateColumns]);
+                dateColumns = Array.from(combinedDates).sort((a, b) => new Date(a) - new Date(b));
+            }
 
-    // --- Core Functions ---
-    function saveData() {
-        localStorage.setItem('attendanceData', JSON.stringify(personnelData));
-        localStorage.setItem('attendanceDates', JSON.stringify(dateColumns));
+            statusEl.textContent = 'Connected to Database';
+            statusEl.className = 'status-indicator status-connected';
+            renderTable();
+
+        } catch (error) {
+            console.error("Error fetching data:", error);
+            statusEl.textContent = 'Database Connection Failed';
+            statusEl.className = 'status-indicator status-error';
+            alert("Could not connect to Django backend. Ensure the server is running on " + API_BASE);
+        }
     }
 
+    // --- Table Rendering ---
     function renderTable() {
         const headerRow = document.getElementById('tableHeaders');
         const body = document.getElementById('tableBody');
 
-        // Reset Headers
+        // Render Headers
         headerRow.innerHTML = `
             <th>S.No</th>
             <th>Army No</th>
@@ -311,7 +312,6 @@
             <th>Mobile No</th>
         `;
 
-        // Add Date Headers
         dateColumns.forEach(date => {
             const d = new Date(date);
             const displayDate = `${d.getDate()}-${d.toLocaleString('default', { month: 'short' })}`;
@@ -323,34 +323,27 @@
         body.innerHTML = '';
         personnelData.forEach((person) => {
             let tr = document.createElement('tr');
+            if(editingId === person.id) tr.classList.add('editing-row');
             
-            // Highlight row if it is currently being edited
-            if(editingId === person.id) {
-                tr.classList.add('editing-row');
-            }
-            
-            // Static Data Cells
             tr.innerHTML = `
                 <td>${person.sno}</td>
                 <td>${person.armyNo}</td>
                 <td>${person.rank}</td>
                 <td style="font-weight: 600;">${person.name}</td>
                 <td>${person.unit}</td>
-                <td>${person.mobile}</td>
+                <td>${person.mobile || ''}</td>
             `;
 
-            // Dynamic Attendance Cells
             dateColumns.forEach(date => {
                 let td = document.createElement('td');
                 let status = person.attendance[date] || '';
                 let btnClass = status === 'P' ? 'att-p' : status === 'A' ? 'att-a' : 'att-none';
                 let btnText = status === '' ? '-' : status;
 
-                td.innerHTML = `<button class="att-btn ${btnClass}" onclick="toggleAttendance(${person.id}, '${date}')">${btnText}</button>`;
+                td.innerHTML = `<button class="att-btn ${btnClass}" onclick="toggleAttendance(${person.id}, '${date}')" id="btn-${person.id}-${date}">${btnText}</button>`;
                 tr.appendChild(td);
             });
 
-            // Action Cell (Edit & Delete)
             tr.innerHTML += `
                 <td>
                     <div class="row-actions">
@@ -363,9 +356,12 @@
         });
     }
 
-    // --- Form Submission (Add or Update) ---
-    document.getElementById('addPersonForm').addEventListener('submit', function(e) {
+    // --- Form Submission (Add/Update to DB) ---
+    document.getElementById('addPersonForm').addEventListener('submit', async function(e) {
         e.preventDefault();
+        const submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = true;
+        submitBtn.innerText = "Saving...";
         
         const formData = {
             sno: document.getElementById('sno').value,
@@ -376,43 +372,102 @@
             mobile: document.getElementById('mobile').value,
         };
 
-        if (editingId) {
-            // --- UPDATE EXISTING RECORD ---
-            const index = personnelData.findIndex(p => p.id === editingId);
-            if (index !== -1) {
-                // Keep the original ID and preserve the existing attendance data
-                formData.id = editingId;
-                formData.attendance = personnelData[index].attendance;
-                personnelData[index] = formData;
-            }
-            resetForm(); // Clear editing state
-        } else {
-            // --- ADD NEW RECORD ---
-            formData.id = Date.now();
-            formData.attendance = {};
-            personnelData.push(formData);
-            
-            // Auto-increment S.No for the next person
+        if (editingId) formData.id = editingId;
+
+        try {
+            await fetch(`${API_BASE}/save-personnel/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+
+            // Store the sno to increment it for the next entry
             let currentSno = parseInt(formData.sno);
-            if(!isNaN(currentSno)) {
+            
+            resetForm();
+            await fetchRegisterData(); // Refresh grid from DB
+
+            if(!isNaN(currentSno) && !editingId) {
                 document.getElementById('sno').value = currentSno + 1;
             }
-            // Clear other fields but keep the auto-incremented S.No
-            ['armyNo', 'rank', 'name', 'mobile'].forEach(id => document.getElementById(id).value = '');
-        }
 
-        saveData();
-        renderTable();
+        } catch (error) {
+            console.error("Error saving data:", error);
+            alert("Failed to save to database.");
+        } finally {
+            submitBtn.disabled = false;
+        }
     });
 
-    // --- Edit Functions ---
+    // --- Attendance Toggling (Sync to DB) ---
+    async function toggleAttendance(personId, date) {
+        const person = personnelData.find(p => p.id === personId);
+        if (!person) return;
+
+        let currentStatus = person.attendance[date];
+        let newStatus = !currentStatus ? 'P' : (currentStatus === 'P' ? 'A' : '');
+
+        // Optimistic UI update (makes the button feel instantly responsive)
+        person.attendance[date] = newStatus;
+        renderTable(); 
+
+        try {
+            const response = await fetch(`${API_BASE}/toggle-attendance/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ person_id: personId, date: date, status: newStatus })
+            });
+            
+            if (!response.ok) throw new Error('Failed to update DB');
+
+        } catch (error) {
+            console.error("Error updating attendance in DB:", error);
+            // If DB fails, revert UI and alert user
+            alert("Failed to save attendance to the database. Reverting.");
+            await fetchRegisterData(); 
+        }
+    }
+
+    // --- Delete Record ---
+    async function deletePerson(personId) {
+        if (confirm("Are you sure you want to completely remove this record from the database?")) {
+            try {
+                await fetch(`${API_BASE}/delete-personnel/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: personId })
+                });
+                
+                if(editingId === personId) cancelEdit();
+                await fetchRegisterData(); // Refresh grid
+                
+            } catch (error) {
+                console.error("Error deleting record:", error);
+                alert("Failed to delete from database.");
+            }
+        }
+    }
+
+    // --- Add Date Column (Local State until attendance is marked) ---
+    function addColumnDate() {
+        const dateInput = document.getElementById('newDateInput').value;
+        if (!dateInput) return alert("Please select a date first.");
+        
+        if (!dateColumns.includes(dateInput)) {
+            dateColumns.push(dateInput);
+            dateColumns.sort((a, b) => new Date(a) - new Date(b));
+            renderTable();
+        } else {
+            alert("This date is already added to the register.");
+        }
+    }
+
+    // --- Edit Mode Helpers ---
     function editPerson(personId) {
         const person = personnelData.find(p => p.id === personId);
         if (!person) return;
 
         editingId = person.id;
-
-        // Populate form with user data
         document.getElementById('sno').value = person.sno;
         document.getElementById('armyNo').value = person.armyNo;
         document.getElementById('rank').value = person.rank;
@@ -420,15 +475,13 @@
         document.getElementById('unit').value = person.unit;
         document.getElementById('mobile').value = person.mobile || '';
 
-        // Update UI to show editing state
         const submitBtn = document.getElementById('submitBtn');
         submitBtn.innerHTML = '✓ Update Record';
         submitBtn.style.backgroundColor = 'var(--warning-color)';
-        
         document.getElementById('cancelBtn').style.display = 'inline-block';
         
-        renderTable(); // Re-render to highlight the row being edited
-        window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll to top form
+        renderTable(); 
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     function cancelEdit() {
@@ -439,49 +492,11 @@
     function resetForm() {
         editingId = null;
         document.getElementById('addPersonForm').reset();
-        
         const submitBtn = document.getElementById('submitBtn');
         submitBtn.innerHTML = '+ Add Record';
         submitBtn.style.backgroundColor = 'var(--accent-color)';
-        
+        submitBtn.disabled = false;
         document.getElementById('cancelBtn').style.display = 'none';
-    }
-
-    // --- Grid / Column Actions ---
-    function addColumnDate() {
-        const dateInput = document.getElementById('newDateInput').value;
-        if (!dateInput) return alert("Please select a date first.");
-        
-        if (!dateColumns.includes(dateInput)) {
-            dateColumns.push(dateInput);
-            dateColumns.sort((a, b) => new Date(a) - new Date(b)); // Sort chronological
-            saveData();
-            renderTable();
-        } else {
-            alert("This date is already added to the register.");
-        }
-    }
-
-    function toggleAttendance(personId, date) {
-        const person = personnelData.find(p => p.id === personId);
-        if (person) {
-            const currentStatus = person.attendance[date];
-            if (!currentStatus) person.attendance[date] = 'P';
-            else if (currentStatus === 'P') person.attendance[date] = 'A';
-            else person.attendance[date] = '';
-            
-            saveData();
-            renderTable();
-        }
-    }
-
-    function deletePerson(personId) {
-        if (confirm("Are you sure you want to completely remove this record?")) {
-            personnelData = personnelData.filter(p => p.id !== personId);
-            if(editingId === personId) cancelEdit(); // Reset form if deleting the person currently being edited
-            saveData();
-            renderTable();
-        }
     }
 
     // --- Export to Real Excel (.xlsx) using SheetJS ---
@@ -503,7 +518,7 @@
                 person.rank,
                 person.name,
                 person.unit,
-                person.mobile
+                person.mobile || ''
             ];
 
             dateColumns.forEach(date => {
@@ -523,8 +538,8 @@
         XLSX.writeFile(workbook, `Attendance_Register_${dateStr}.xlsx`);
     }
 
-    // Initial Render
-    renderTable();
+    // --- Start Application ---
+    initApp();
 
 </script>
 </body>
